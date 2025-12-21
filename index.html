@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>rule-22</title>
+    <script>
+      (() => {
+        try {
+          const storageKey = "theme";
+          const stored = localStorage.getItem(storageKey);
+          const prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+          const resolved =
+            stored === "light" || stored === "dark"
+              ? stored
+              : prefersDark
+                ? "dark"
+                : "light";
+
+          document.documentElement.classList.toggle("dark", resolved === "dark");
+          document.documentElement.style.colorScheme = resolved;
+        } catch {
+          // no-op
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
