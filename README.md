@@ -1,75 +1,59 @@
-# React + TypeScript + Vite
+# Rule 22
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An interactive **1D cellular automaton** visualizer.
 
-Currently, two official plugins are available:
+This app simulates a line of binary cells (0/1) over multiple generations using the rule:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Next cell is 1 iff exactly one of (Left, Current, Right) is 1**; otherwise it becomes 0.
+- **Boundary cells** assume the missing neighbor is 0.
+- **Each generation is computed from the previous generation** (all updates happen “at once” per step).
 
-## React Compiler
+The UI lets you tweak the configuration, run/pause/reset the simulation, and see both the grid and a small chart of **ones per generation**.
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+## Features
 
-Note: This will impact Vite dev & build performances.
+- **Configurable simulation**: total cells, number of initially-on cells (random unique positions), number of generations, tick delay
+- **Live visualization**: 10-cells-per-row grid + “ones per generation” bar chart that grows as the simulation runs
+- **Theme switcher**: light / dark / system (stored locally)
 
-## Expanding the ESLint configuration
+## Tech stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- **React + TypeScript** (Vite)
+- **Tailwind CSS** (via `@tailwindcss/vite`)
+- **Vercel** friendly SPA routing (see `vercel.json`)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Getting started
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Install dependencies (this repo uses `pnpm-lock.yaml`):
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Run the dev server:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm dev
 ```
+
+Build for production:
+
+```bash
+pnpm build
+```
+
+Preview the production build locally:
+
+```bash
+pnpm preview
+```
+
+## Project structure (high-level)
+
+- `src/Rule22.tsx`: UI (controls, chart, grid)
+- `src/useRule22.ts`: simulation engine (state + stepping logic)
+- `src/useTheme.ts`, `src/ThemeSwitcher.tsx`: theme handling + UI
+
+## Deployment
+
+Deploy as a static SPA. `vercel.json` includes a rewrite so deep links route back to `index.html`.
