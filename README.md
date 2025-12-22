@@ -1,26 +1,30 @@
-# Rule 22
+# rule-22
 
-An interactive **1D cellular automaton** visualizer.
+An interactive **elementary cellular automaton (ECA)** visualizer (1D, binary states) built with React + TypeScript.
 
-This app simulates a line of binary cells (0/1) over multiple generations using the rule:
-
-- **Next cell is 1 iff exactly one of (Left, Current, Right) is 1**; otherwise it becomes 0.
-- **Boundary cells** assume the missing neighbor is 0.
-- **Each generation is computed from the previous generation** (all updates happen “at once” per step).
-
-The UI lets you tweak the configuration, run/pause/reset the simulation, and see both the grid and a small chart of **ones per generation**.
+The simulator supports **all 256 elementary rules (0–255)** and renders a **space‑time diagram** (each row = one generation).
 
 ## Features
 
-- **Configurable simulation**: total cells, number of initially-on cells (random unique positions), number of generations, tick delay
-- **Live visualization**: 10-cells-per-row grid + “ones per generation” bar chart that grows as the simulation runs
-- **Theme switcher**: light / dark / system (stored locally)
+- **All 256 ECA rules (0–255)**: pick a rule and see the corresponding (L,C,R) truth table.
+- **Space‑time diagram**: tiny dots, one row per generation, auto-scrolls as the simulation runs.
+- **Run controls**: rule selector + start/stop/reset (changing rule stops + resets).
+- **Tunable parameters** (collapsed panel): total cells, initial ones, generations, delay.
+- **Ones per generation chart** (collapsed by default): quick density signal over time.
+- **Theme switcher**: light / dark / system (in the footer, persisted locally).
+
+## Defaults
+
+- **Rule**: 22
+- **Cells**: 118
+- **Generations**: 100
+- **Delay**: 10ms
 
 ## Tech stack
 
 - **React + TypeScript** (Vite)
-- **Tailwind CSS** (via `@tailwindcss/vite`)
-- **Vercel** friendly SPA routing (see `vercel.json`)
+- **Tailwind CSS**
+- **Vercel-friendly** SPA routing (see `vercel.json`)
 
 ## Getting started
 
@@ -50,9 +54,13 @@ pnpm preview
 
 ## Project structure (high-level)
 
-- `src/Rule22.tsx`: UI (controls, chart, grid)
-- `src/useRule22.ts`: simulation engine (state + stepping logic)
-- `src/useTheme.ts`, `src/ThemeSwitcher.tsx`: theme handling + UI
+- `src/useElementaryAutomaton.ts`: simulation engine (rule application + stepping + history)
+- `src/Rule22.tsx`: UI (rule&run, controls, ones chart, space‑time diagram)
+- `src/theme.ts`, `src/useTheme.ts`, `src/ThemeSwitcher.tsx`: theme handling
+
+## Repository
+
+- `https://github.com/paulbalogh/rule-22`
 
 ## Deployment
 

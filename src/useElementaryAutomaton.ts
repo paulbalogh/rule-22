@@ -58,10 +58,10 @@ function applyElementaryRule(
 
 export function useElementaryAutomaton({
 	ruleDecimal,
-	totalItems = 100,
+	totalItems = 118,
 	initialOnes = 1,
 	generations = 100,
-	delay = 100,
+	delay = 10,
 	boundaryValue = 0,
 }: UseElementaryAutomatonOptions) {
 	const rule = clampRuleDecimal(ruleDecimal);
@@ -73,6 +73,7 @@ export function useElementaryAutomaton({
 			generation: 0,
 			isRunning: false,
 			onesHistory: [countOnes(blocks)],
+			blocksHistory: [{ generation: 0, blocks }],
 		};
 	});
 
@@ -85,6 +86,7 @@ export function useElementaryAutomaton({
 				generation: 0,
 				isRunning: false,
 				onesHistory: [countOnes(blocks)],
+				blocksHistory: [{ generation: 0, blocks }],
 			});
 		}, 0);
 		return () => clearTimeout(t);
@@ -110,11 +112,21 @@ export function useElementaryAutomaton({
 				const nextHistory = prev.onesHistory.slice(0, prev.generation + 1);
 				nextHistory[nextGeneration] = countOnes(nextBlocks);
 
+				const nextBlocksHistory = prev.blocksHistory.slice(
+					0,
+					prev.generation + 1,
+				);
+				nextBlocksHistory[nextGeneration] = {
+					generation: nextGeneration,
+					blocks: nextBlocks,
+				};
+
 				return {
 					blocks: nextBlocks,
 					generation: nextGeneration,
 					isRunning: nextGeneration >= generations ? false : prev.isRunning,
 					onesHistory: nextHistory,
+					blocksHistory: nextBlocksHistory,
 				};
 			});
 		}, delay);
@@ -127,6 +139,7 @@ export function useElementaryAutomaton({
 			isRunning: true,
 			generation: 0,
 			onesHistory: [countOnes(prev.blocks)],
+			blocksHistory: [{ generation: 0, blocks: prev.blocks }],
 		}));
 	}, []);
 
@@ -141,11 +154,13 @@ export function useElementaryAutomaton({
 			generation: 0,
 			isRunning: false,
 			onesHistory: [countOnes(blocks)],
+			blocksHistory: [{ generation: 0, blocks }],
 		});
 	}, [initialOnes, totalItems, boundaryValue]);
 
 	return {
 		blocks: state.blocks,
+		blocksHistory: state.blocksHistory,
 		generation: state.generation,
 		isRunning: state.isRunning,
 		onesHistory: state.onesHistory,

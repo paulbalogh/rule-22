@@ -16,7 +16,14 @@
  * @returns A div that displays the blocks and the current generation with a nice animation when blocks are evaluated and between generations.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { to8BitBinary } from "./rules";
 import { useElementaryAutomaton } from "./useElementaryAutomaton";
 
@@ -32,11 +39,438 @@ function clampInt(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+type RuleOption = { decimal: number; binary: string };
+
+function RuleDetailsPanel({
+  ruleDecimal,
+  ruleBinary,
+}: {
+  ruleDecimal: number;
+  ruleBinary: string;
+}) {
+  const rows = useMemo(() => {
+    // Show neighborhoods in the conventional order: 111, 110, ..., 000
+    return Array.from({ length: 8 }, (_, i) => {
+      const idx = 7 - i;
+      const left = ((idx >> 2) & 1) as 0 | 1;
+      const current = ((idx >> 1) & 1) as 0 | 1;
+      const right = (idx & 1) as 0 | 1;
+      const out = ((ruleDecimal >> idx) & 1) as 0 | 1;
+      return { idx, left, current, right, out };
+    });
+  }, [ruleDecimal]);
+
+  const cellClass = (v: 0 | 1) =>
+    `h-2 w-2 rounded-lg ring-1 ${
+      v === 1
+        ? "bg-blue-600 ring-blue-700/30 dark:bg-sky-400 dark:ring-sky-300/30"
+        : "bg-slate-200 ring-slate-300 dark:bg-slate-800 dark:ring-slate-700"
+    }`;
+
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+      <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        Rule details
+      </summary>
+
+      <div className="mt-3">
+        <div className="text-xs text-slate-600 dark:text-slate-300">
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            Rule {ruleDecimal}
+          </span>{" "}
+          • binary{" "}
+          <span className="font-mono text-slate-900 dark:text-slate-100">
+            {ruleBinary}
+          </span>{" "}
+          <span className="text-slate-400 dark:text-slate-500">(111→000)</span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          {rows.map((r) => (
+            <div
+              key={r.idx}
+              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-950/40"
+            >
+              <div className="flex items-center gap-2">
+                <div className={cellClass(r.left)} title="L" />
+                <div className={cellClass(r.current)} title="C" />
+                <div className={cellClass(r.right)} title="R" />
+                <div className="mx-1 text-xs font-semibold text-slate-400 dark:text-slate-500">
+                  →
+                </div>
+                <div className={cellClass(r.out)} title="Next" />
+              </div>
+
+              <div className="font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                {r.left}
+                {r.current}
+                {r.right} → {r.out}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function RuleAndRunPanel({
+  ruleOptions,
+  ruleDecimal,
+  onChangeRule,
+  isRunning,
+  canToggleRun,
+  onToggleRun,
+  onReset,
+}: {
+  ruleOptions: ReadonlyArray<RuleOption>;
+  ruleDecimal: number;
+  onChangeRule: (nextRuleDecimal: number) => void;
+  isRunning: boolean;
+  canToggleRun: boolean;
+  onToggleRun: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <label className="flex w-full flex-col gap-1 sm:max-w-60">
+        <select
+          value={ruleDecimal}
+          onChange={(e) => onChangeRule(Number(e.target.value))}
+          className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
+        >
+          {ruleOptions.map((r) => (
+            <option key={r.decimal} value={r.decimal}>
+              Rule {r.decimal} ({r.binary})
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="flex w-full items-center gap-2 sm:w-auto">
+        <button
+          type="button"
+          onClick={onToggleRun}
+          disabled={!canToggleRun}
+          className={`inline-flex h-10 flex-1 items-center justify-center rounded-xl px-4 text-sm font-semibold shadow-sm transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none ${
+            isRunning
+              ? "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200 dark:hover:bg-rose-950/50"
+              : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+          }`}
+        >
+          {isRunning ? "Stop" : "Start"}
+        </button>
+        <button
+          type="button"
+          onClick={onReset}
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px sm:flex-none dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
+        >
+          Reset
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ControlsPanel({
+  draft,
+  setDraft,
+  applied,
+  currentGeneration,
+  onApply,
+}: {
+  draft: {
+    totalItems: number;
+    initialOnes: number;
+    generations: number;
+    delay: number;
+  };
+  setDraft: Dispatch<
+    SetStateAction<{
+      ruleDecimal: number;
+      totalItems: number;
+      initialOnes: number;
+      generations: number;
+      delay: number;
+    }>
+  >;
+  applied: {
+    totalItems: number;
+    initialOnes: number;
+    generations: number;
+    delay: number;
+  };
+  currentGeneration: number;
+  onApply: () => void;
+}) {
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+      <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        Controls
+      </summary>
+
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            Cells / generation
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={300}
+            value={draft.totalItems}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                totalItems: Number(e.target.value),
+              }))
+            }
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            Generations
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={500}
+            value={draft.generations}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                generations: Number(e.target.value),
+              }))
+            }
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            Seed
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={Math.max(0, draft.totalItems)}
+            value={draft.initialOnes}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                initialOnes: Number(e.target.value),
+              }))
+            }
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
+            Delay (ms)
+          </span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={10}
+            max={5000}
+            step={10}
+            value={draft.delay}
+            onChange={(e) =>
+              setDraft((d) => ({ ...d, delay: Number(e.target.value) }))
+            }
+            className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <div className="text-xs text-slate-600 dark:text-slate-300">
+          Generation{" "}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {currentGeneration}
+          </span>{" "}
+          / {applied.generations}
+          <span className="mx-2 text-slate-300 dark:text-slate-700">•</span>
+          Items{" "}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {applied.totalItems}
+          </span>
+          , Ones{" "}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {applied.initialOnes}
+          </span>
+          , Delay{" "}
+          <span className="font-semibold text-slate-900 dark:text-slate-100">
+            {applied.delay}ms
+          </span>
+        </div>
+
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+          <button
+            type="button"
+            onClick={onApply}
+            className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function OnesPerGenerationPanel({
+  bars,
+  currentGeneration,
+  max,
+}: {
+  bars: Array<{ id: string; gen: number; count: number }>;
+  currentGeneration: number;
+  max: number;
+}) {
+  const chartScrollRef = useRef<HTMLDivElement | null>(null);
+  const prevBarsLenRef = useRef(0);
+
+  useEffect(() => {
+    if (bars.length > prevBarsLenRef.current) {
+      const el = chartScrollRef.current;
+      if (el) {
+        requestAnimationFrame(() => {
+          el.scrollLeft = el.scrollWidth;
+        });
+      }
+    }
+    prevBarsLenRef.current = bars.length;
+  }, [bars.length]);
+
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+      <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        Ones per generation
+      </summary>
+
+      <div className="mt-3">
+        {bars.length === 0 ? (
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            Start the simulation to populate the chart.
+          </div>
+        ) : (
+          <div ref={chartScrollRef} className="overflow-x-auto">
+            <div className="flex items-end gap-1 pb-1">
+              {bars.map(({ id, gen, count }) => (
+                <div key={id} className="flex w-3 flex-col items-center gap-1">
+                  <div className="flex h-14 items-end">
+                    <div
+                      className={`w-2 rounded-sm ${
+                        gen === currentGeneration
+                          ? "bg-slate-900 dark:bg-slate-100"
+                          : "bg-slate-300 dark:bg-slate-700"
+                      }`}
+                      style={{
+                        height: `${Math.max(2, (count / max) * 100)}%`,
+                      }}
+                      title={`Gen ${gen}: ${count} ones`}
+                    />
+                  </div>
+                  <div className="text-[10px] font-medium leading-none text-slate-500 dark:text-slate-400">
+                    {count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SpaceTimeDiagram({
+  appliedTotalItems,
+  totalGenerations,
+  generation,
+  blocksHistory,
+  cellIds,
+}: {
+  appliedTotalItems: number;
+  totalGenerations: number;
+  generation: number;
+  blocksHistory: Array<{ generation: number; blocks: Array<0 | 1> }>;
+  cellIds: string[];
+}) {
+  const spaceTimeRef = useRef<HTMLDivElement | null>(null);
+  const prevGenRef = useRef(generation);
+
+  // Approximate needed height: each row ~2px dot + 1px gap = ~3px.
+  // Use the configured total generations so the container height matches the expected full run.
+  const approxMinHeightPx = (totalGenerations + 1) * 3 + 16;
+
+  useEffect(() => {
+    if (generation <= prevGenRef.current) return;
+    prevGenRef.current = generation;
+    const el = spaceTimeRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [generation]);
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+      <div className="flex items-center justify-between">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+          Space-time diagram
+        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          {appliedTotalItems} cells × {generation + 1} generations
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <div
+          ref={spaceTimeRef}
+          className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40"
+          style={{ minHeight: `${approxMinHeightPx}px` }}
+        >
+          <div className="flex flex-col gap-px" aria-hidden="true">
+            {blocksHistory.slice(0, generation + 1).map((row) => (
+              <div
+                key={`gen-${row.generation}`}
+                className="grid gap-px"
+                style={{
+                  gridTemplateColumns: `repeat(${appliedTotalItems}, 2px)`,
+                }}
+              >
+                {row.blocks.map((cell, i) => (
+                  <div
+                    key={`${row.generation}-${cellIds[i] ?? `cell-${i}`}`}
+                    className={`h-[2px] w-[2px] rounded-full ${
+                      cell === 1
+                        ? "bg-blue-600 dark:bg-sky-400"
+                        : "bg-slate-200 dark:bg-slate-800"
+                    }`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Rule22({
-  totalItems = 100,
+  totalItems = 118,
   initialOnes = 1,
   generations = 100,
-  delay = 100,
+  delay = 10,
 }: Rule22Props) {
   const ruleOptions = useMemo(
     () =>
@@ -94,18 +528,24 @@ export function Rule22({
     [applied.ruleDecimal]
   );
 
-  const { blocks, generation, isRunning, onesHistory, start, stop, reset } =
-    useElementaryAutomaton(applied);
+  const {
+    generation,
+    isRunning,
+    onesHistory,
+    blocksHistory,
+    start,
+    stop,
+    reset,
+  } = useElementaryAutomaton(applied);
 
-  const canStart = !isRunning && generation < applied.generations;
-  const canStop = isRunning;
-  const canToggleRun = isRunning ? canStop : canStart;
-
-  const cols = Math.min(10, Math.max(1, applied.totalItems));
   const cellIds = useMemo(
     () => Array.from({ length: applied.totalItems }, (_, i) => `cell-${i}`),
     [applied.totalItems]
   );
+
+  const canStart = !isRunning && generation < applied.generations;
+  const canStop = isRunning;
+  const canToggleRun = isRunning ? canStop : canStart;
 
   const chart = useMemo(() => {
     const history = onesHistory.slice(
@@ -125,21 +565,6 @@ export function Rule22({
       })),
     [chart.history]
   );
-
-  const chartScrollRef = useRef<HTMLDivElement | null>(null);
-  const prevBarsLenRef = useRef(0);
-
-  useEffect(() => {
-    if (bars.length > prevBarsLenRef.current) {
-      const el = chartScrollRef.current;
-      if (el) {
-        requestAnimationFrame(() => {
-          el.scrollLeft = el.scrollWidth;
-        });
-      }
-    }
-    prevBarsLenRef.current = bars.length;
-  }, [bars.length]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -167,283 +592,71 @@ export function Rule22({
         </div>
       </div>
 
-      <fieldset className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-        <legend className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-          Rule & Run
-        </legend>
+      <RuleAndRunPanel
+        ruleOptions={ruleOptions}
+        ruleDecimal={draft.ruleDecimal}
+        onChangeRule={(value) => {
+          const nextRule = clampInt(value, 0, 255);
+          setDraft((d) => ({ ...d, ruleDecimal: nextRule }));
+          setConfig((c) => ({ ...c, ruleDecimal: nextRule }));
+          stop();
+          reset();
+        }}
+        isRunning={isRunning}
+        canToggleRun={canToggleRun}
+        onToggleRun={isRunning ? stop : start}
+        onReset={() => {
+          stop();
+          reset();
+        }}
+      />
 
-        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <label className="flex w-full flex-col gap-1 sm:max-w-60">
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-              Rule
-            </span>
-            <select
-              value={draft.ruleDecimal}
-              onChange={(e) => {
-                const nextRule = clampInt(Number(e.target.value), 0, 255);
-                setDraft((d) => ({ ...d, ruleDecimal: nextRule }));
-                setConfig((c) => ({ ...c, ruleDecimal: nextRule }));
-                stop();
-                reset();
-              }}
-              className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
-            >
-              {ruleOptions.map((r) => (
-                <option key={r.decimal} value={r.decimal}>
-                  Rule {r.decimal} ({r.binary})
-                </option>
-              ))}
-            </select>
-          </label>
+      <RuleDetailsPanel
+        ruleDecimal={ruleMeta.decimal}
+        ruleBinary={ruleMeta.binary}
+      />
 
-          <div className="flex w-full items-center gap-2 sm:w-auto">
-            <button
-              type="button"
-              onClick={isRunning ? stop : start}
-              disabled={!canToggleRun}
-              className={`inline-flex h-10 flex-1 items-center justify-center rounded-xl px-4 text-sm font-semibold shadow-sm transition active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none ${
-                isRunning
-                  ? "border border-rose-200 bg-rose-50 text-rose-800 hover:bg-rose-100 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200 dark:hover:bg-rose-950/50"
-                  : "bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
-              }`}
-            >
-              {isRunning ? "Stop" : "Start"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                stop();
-                reset();
-              }}
-              className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px sm:flex-none dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-      </fieldset>
+      <ControlsPanel
+        draft={draft}
+        setDraft={setDraft}
+        applied={applied}
+        currentGeneration={generation}
+        onApply={() => {
+          // Apply with clamping to avoid surprising resets while typing.
+          const safeTotal = clampInt(draft.totalItems, 1, 300);
+          const safeInitial = clampInt(draft.initialOnes, 0, safeTotal);
+          const safeGenerations = clampInt(draft.generations, 1, 500);
+          const safeDelay = clampInt(draft.delay, 10, 5_000);
+          setDraft((d) => ({
+            ...d,
+            totalItems: safeTotal,
+            initialOnes: safeInitial,
+            generations: safeGenerations,
+            delay: safeDelay,
+          }));
+          setConfig((c) => ({
+            ...c,
+            totalItems: safeTotal,
+            initialOnes: safeInitial,
+            generations: safeGenerations,
+            delay: safeDelay,
+          }));
+        }}
+      />
 
-      <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-        <summary className="cursor-pointer list-none select-none px-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-          Controls
-        </summary>
+      <OnesPerGenerationPanel
+        bars={bars}
+        currentGeneration={generation}
+        max={chart.max}
+      />
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-              Total items
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={300}
-              value={draft.totalItems}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  totalItems: Number(e.target.value),
-                }))
-              }
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-              Initial ones
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={Math.max(0, draft.totalItems)}
-              value={draft.initialOnes}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  initialOnes: Number(e.target.value),
-                }))
-              }
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-              Generations
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={500}
-              value={draft.generations}
-              onChange={(e) =>
-                setDraft((d) => ({
-                  ...d,
-                  generations: Number(e.target.value),
-                }))
-              }
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-              Delay (ms)
-            </span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={10}
-              max={5000}
-              step={10}
-              value={draft.delay}
-              onChange={(e) =>
-                setDraft((d) => ({ ...d, delay: Number(e.target.value) }))
-              }
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
-            />
-          </label>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-600 dark:text-slate-300">
-            Generation{" "}
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {generation}
-            </span>{" "}
-            / {applied.generations}
-            <span className="mx-2 text-slate-300 dark:text-slate-700">•</span>
-            Items{" "}
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {applied.totalItems}
-            </span>
-            , Ones{" "}
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {applied.initialOnes}
-            </span>
-            , Delay{" "}
-            <span className="font-semibold text-slate-900 dark:text-slate-100">
-              {applied.delay}ms
-            </span>
-          </div>
-
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                // Apply with clamping to avoid surprising resets while typing.
-                const safeTotal = clampInt(draft.totalItems, 1, 300);
-                const safeInitial = clampInt(draft.initialOnes, 0, safeTotal);
-                const safeGenerations = clampInt(draft.generations, 1, 500);
-                const safeDelay = clampInt(draft.delay, 10, 5_000);
-                setDraft((d) => ({
-                  ...d,
-                  totalItems: safeTotal,
-                  initialOnes: safeInitial,
-                  generations: safeGenerations,
-                  delay: safeDelay,
-                }));
-                setConfig((c) => ({
-                  ...c,
-                  totalItems: safeTotal,
-                  initialOnes: safeInitial,
-                  generations: safeGenerations,
-                  delay: safeDelay,
-                }));
-              }}
-              className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
-            >
-              Apply
-            </button>
-          </div>
-        </div>
-      </details>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Ones per generation
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            {chart.history.length === 0 ? "—" : `max ${chart.max}`}
-          </div>
-        </div>
-
-        <div className="mt-3">
-          {chart.history.length === 0 ? (
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              Start the simulation to populate the chart.
-            </div>
-          ) : (
-            <div ref={chartScrollRef} className="overflow-x-auto">
-              <div className="flex items-end gap-1 pb-1">
-                {bars.map(({ id, gen, count }) => (
-                  <div
-                    key={id}
-                    className="flex w-3 flex-col items-center gap-1"
-                  >
-                    <div className="flex h-14 items-end">
-                      <div
-                        className={`w-2 rounded-sm ${
-                          gen === generation
-                            ? "bg-slate-900 dark:bg-slate-100"
-                            : "bg-slate-300 dark:bg-slate-700"
-                        }`}
-                        style={{
-                          height: `${Math.max(2, (count / chart.max) * 100)}%`,
-                        }}
-                        title={`Gen ${gen}: ${count} ones`}
-                      />
-                    </div>
-                    <div className="text-[10px] font-medium leading-none text-slate-500 dark:text-slate-400">
-                      {count}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-            Grid
-          </div>
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            10 per row
-          </div>
-        </div>
-
-        <div className="mt-3 flex items-center justify-center">
-          <div
-            className="grid gap-2"
-            aria-hidden="true"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-            }}
-          >
-            {cellIds.map((id, i) => {
-              const block = blocks[i] ?? 0;
-              return (
-                <div
-                  key={id}
-                  className={`h-4 w-4 rounded-lg ring-1 transition-colors duration-200 ${
-                    block === 1
-                      ? "bg-blue-600 ring-blue-700/30 dark:bg-sky-400 dark:ring-sky-300/30"
-                      : "bg-slate-200 ring-slate-300 dark:bg-slate-800 dark:ring-slate-700"
-                  }`}
-                  title={block === 1 ? "On" : "Off"}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      <SpaceTimeDiagram
+        appliedTotalItems={applied.totalItems}
+        totalGenerations={applied.generations}
+        generation={generation}
+        blocksHistory={blocksHistory}
+        cellIds={cellIds}
+      />
     </div>
   );
 }
