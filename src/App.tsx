@@ -8,7 +8,9 @@ function App() {
         <ThemeSwitcher />
       </div>
 
-      <h1 className="text-3xl font-semibold tracking-tight">Rule 22</h1>
+      <h1 className="text-3xl font-semibold tracking-tight">
+        Elementary cellular automata
+      </h1>
 
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/30">
         <Rule22 />

@@ -1,18 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 
-export interface UseRule22Options {
+export interface UseElementaryAutomatonOptions {
+	ruleDecimal: number; // 0..255
 	totalItems?: number;
 	initialOnes?: number;
 	generations?: number;
 	delay?: number;
+	boundaryValue?: 0 | 1;
 }
 
 function makeInitialValues(
 	totalItems: number,
 	initialOnes: number,
+	boundaryValue?: 0 | 1,
 ): Array<0 | 1> {
 	const n = Math.max(0, Math.min(totalItems, Math.floor(initialOnes)));
-	const values = Array.from({ length: totalItems }, () => 0 as 0 | 1);
+	const values = Array.from(
+		{ length: totalItems },
+		() => boundaryValue ?? (0 as 0 | 1),
+	);
 	if (n === 0 || totalItems === 0) return values;
 
 	// Pick n unique indices uniformly.
@@ -29,14 +35,39 @@ function countOnes(values: Array<0 | 1>): number {
 	return values.reduce<number>((acc, b) => acc + b, 0);
 }
 
-export function useRule22({
+function clampRuleDecimal(ruleDecimal: number): number {
+	if (!Number.isFinite(ruleDecimal)) return 0;
+	return Math.max(0, Math.min(255, Math.floor(ruleDecimal)));
+}
+
+/**
+ * Elementary Cellular Automaton rule application.
+ * Neighborhood index: (L,C,R) as a 3-bit number in the order L C R, so:
+ * 000 -> 0 ... 111 -> 7.
+ * Output bit is taken from ruleDecimal at that index.
+ */
+function applyElementaryRule(
+	ruleDecimal: number,
+	left: 0 | 1,
+	current: 0 | 1,
+	right: 0 | 1,
+): 0 | 1 {
+	const idx = (left << 2) | (current << 1) | right; // 0..7
+	return ((ruleDecimal >> idx) & 1) as 0 | 1;
+}
+
+export function useElementaryAutomaton({
+	ruleDecimal,
 	totalItems = 100,
 	initialOnes = 1,
 	generations = 100,
 	delay = 100,
-}: UseRule22Options = {}) {
+	boundaryValue = 0,
+}: UseElementaryAutomatonOptions) {
+	const rule = clampRuleDecimal(ruleDecimal);
+
 	const [state, setState] = useState(() => {
-		const blocks = makeInitialValues(totalItems, initialOnes);
+		const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
 		return {
 			blocks,
 			generation: 0,
@@ -48,7 +79,7 @@ export function useRule22({
 	// If config changes, re-seed on the next tick (keeps the "no setState in effect body" lint happy).
 	useEffect(() => {
 		const t = setTimeout(() => {
-			const blocks = makeInitialValues(totalItems, initialOnes);
+			const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
 			setState({
 				blocks,
 				generation: 0,
@@ -57,7 +88,7 @@ export function useRule22({
 			});
 		}, 0);
 		return () => clearTimeout(t);
-	}, [totalItems, initialOnes]);
+	}, [totalItems, initialOnes, boundaryValue]);
 
 	useEffect(() => {
 		if (!state.isRunning) return;
@@ -66,10 +97,12 @@ export function useRule22({
 				const nextBlocks = Array.from(
 					{ length: prev.blocks.length },
 					(_, i) => {
-						const left = i > 0 ? prev.blocks[i - 1] : 0;
-						const current = prev.blocks[i] ?? 0;
-						const right = i < prev.blocks.length - 1 ? prev.blocks[i + 1] : 0;
-						return (left + current + right === 1 ? 1 : 0) as 0 | 1;
+						const left = i > 0 ? prev.blocks[i - 1] : boundaryValue;
+						const current = prev.blocks[i] ?? boundaryValue;
+						const right =
+							i < prev.blocks.length - 1 ? prev.blocks[i + 1] : boundaryValue;
+
+						return applyElementaryRule(rule, left, current, right);
 					},
 				);
 
@@ -86,7 +119,7 @@ export function useRule22({
 			});
 		}, delay);
 		return () => clearInterval(interval);
-	}, [delay, generations, state.isRunning]);
+	}, [delay, generations, state.isRunning, rule, boundaryValue]);
 
 	const start = useCallback(() => {
 		setState((prev) => ({
@@ -102,14 +135,14 @@ export function useRule22({
 	}, []);
 
 	const reset = useCallback(() => {
-		const blocks = makeInitialValues(totalItems, initialOnes);
+		const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
 		setState({
 			blocks,
 			generation: 0,
 			isRunning: false,
 			onesHistory: [countOnes(blocks)],
 		});
-	}, [initialOnes, totalItems]);
+	}, [initialOnes, totalItems, boundaryValue]);
 
 	return {
 		blocks: state.blocks,
