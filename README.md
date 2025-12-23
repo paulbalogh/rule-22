@@ -4,6 +4,8 @@ An interactive **elementary cellular automaton (ECA)** visualizer (1D, binary st
 
 The simulator supports **all 256 elementary rules (0–255)** and renders a **space‑time diagram** (each row = one generation).
 
+Boundary behavior is **stitched/wrap-around** (the last cell neighbors the first).
+
 ## Features
 
 - **All 256 ECA rules (0–255)**: pick a rule and see the corresponding (L,C,R) truth table.

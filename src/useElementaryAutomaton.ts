@@ -99,10 +99,13 @@ export function useElementaryAutomaton({
 				const nextBlocks = Array.from(
 					{ length: prev.blocks.length },
 					(_, i) => {
-						const left = i > 0 ? prev.blocks[i - 1] : boundaryValue;
+						const n = prev.blocks.length;
+						if (n === 0) return boundaryValue;
+
+						// "Stitched" boundary: treat the row as a ring (wrap-around).
+						const left = prev.blocks[(i - 1 + n) % n] ?? boundaryValue;
 						const current = prev.blocks[i] ?? boundaryValue;
-						const right =
-							i < prev.blocks.length - 1 ? prev.blocks[i + 1] : boundaryValue;
+						const right = prev.blocks[(i + 1) % n] ?? boundaryValue;
 
 						return applyElementaryRule(rule, left, current, right);
 					},
