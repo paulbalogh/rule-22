@@ -16,15 +16,12 @@
  * @returns A div that displays the blocks and the current generation with a nice animation when blocks are evaluated and between generations.
  */
 
-import {
-  type Dispatch,
-  type SetStateAction,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { to8BitBinary } from "./rules";
+import {
+  buildShareableSearch,
+  parseShareableStateFromLocation,
+} from "./urlState";
 import { useElementaryAutomaton } from "./useElementaryAutomaton";
 
 interface Rule22Props {
@@ -40,6 +37,62 @@ function clampInt(value: number, min: number, max: number) {
 }
 
 type RuleOption = { decimal: number; binary: string };
+
+function randomSeedIndices(totalItems: number, count: number): number[] {
+  const n = clampInt(count, 0, totalItems);
+  const indices = Array.from({ length: totalItems }, (_, i) => i);
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices.slice(0, n).sort((a, b) => a - b);
+}
+
+function defaultSeedCount(totalItems: number) {
+  return clampInt(Math.floor(totalItems / 2), 0, totalItems);
+}
+
+function normalizeSeedIndices(
+  totalItems: number,
+  seedIndices: number[]
+): number[] {
+  const set = new Set<number>();
+  for (const idx of seedIndices) {
+    if (!Number.isFinite(idx)) continue;
+    const i = Math.floor(idx);
+    if (i < 0 || i >= totalItems) continue;
+    set.add(i);
+  }
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+type ControlState = {
+  totalItems: number;
+  generations: number;
+  delay: number;
+  seedIndices: number[];
+  initialOnes: number;
+};
+
+function applyControlPatch<T extends ControlState>(
+  prev: T,
+  patch: Partial<ControlState>
+): T {
+  const merged = { ...prev, ...patch };
+  const safeTotal = clampInt(merged.totalItems, 1, 300);
+  const safeGenerations = clampInt(merged.generations, 1, 500);
+  const safeDelay = clampInt(merged.delay, 10, 5_000);
+  const safeSeed = normalizeSeedIndices(safeTotal, merged.seedIndices ?? []);
+  const safeInitial = clampInt(safeSeed.length, 0, safeTotal);
+  return {
+    ...merged,
+    totalItems: safeTotal,
+    generations: safeGenerations,
+    delay: safeDelay,
+    seedIndices: safeSeed,
+    initialOnes: safeInitial,
+  };
+}
 
 function RuleDetailsPanel({
   ruleDecimal,
@@ -121,7 +174,7 @@ function RuleAndRunPanel({
   isRunning,
   canToggleRun,
   onToggleRun,
-  onReset,
+  onRandomRule,
 }: {
   ruleOptions: ReadonlyArray<RuleOption>;
   ruleDecimal: number;
@@ -129,7 +182,7 @@ function RuleAndRunPanel({
   isRunning: boolean;
   canToggleRun: boolean;
   onToggleRun: () => void;
-  onReset: () => void;
+  onRandomRule: () => void;
 }) {
   return (
     <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -162,10 +215,10 @@ function RuleAndRunPanel({
         </button>
         <button
           type="button"
-          onClick={onReset}
+          onClick={onRandomRule}
           className="inline-flex h-10 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px sm:flex-none dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
         >
-          Reset
+          Random
         </button>
       </div>
     </div>
@@ -174,34 +227,28 @@ function RuleAndRunPanel({
 
 function ControlsPanel({
   draft,
-  setDraft,
   applied,
   currentGeneration,
-  onApply,
+  onRandomizeSeeds,
+  onControlsPatch,
 }: {
   draft: {
     totalItems: number;
     initialOnes: number;
+    seedIndices: number[];
     generations: number;
     delay: number;
   };
-  setDraft: Dispatch<
-    SetStateAction<{
-      ruleDecimal: number;
-      totalItems: number;
-      initialOnes: number;
-      generations: number;
-      delay: number;
-    }>
-  >;
   applied: {
     totalItems: number;
     initialOnes: number;
+    seedIndices: number[];
     generations: number;
     delay: number;
   };
   currentGeneration: number;
-  onApply: () => void;
+  onRandomizeSeeds: () => void;
+  onControlsPatch: (patch: Partial<ControlState>) => void;
 }) {
   return (
     <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
@@ -209,10 +256,10 @@ function ControlsPanel({
         Controls
       </summary>
 
-      <div className="mt-3 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-4 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-700 dark:text-slate-200">
-            Cells / generation
+            Cells
           </span>
           <input
             type="number"
@@ -221,10 +268,7 @@ function ControlsPanel({
             max={300}
             value={draft.totalItems}
             onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                totalItems: Number(e.target.value),
-              }))
+              onControlsPatch({ totalItems: Number(e.target.value) })
             }
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
           />
@@ -241,10 +285,7 @@ function ControlsPanel({
             max={500}
             value={draft.generations}
             onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                generations: Number(e.target.value),
-              }))
+              onControlsPatch({ generations: Number(e.target.value) })
             }
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
           />
@@ -261,10 +302,20 @@ function ControlsPanel({
             max={Math.max(0, draft.totalItems)}
             value={draft.initialOnes}
             onChange={(e) =>
-              setDraft((d) => ({
-                ...d,
-                initialOnes: Number(e.target.value),
-              }))
+              (() => {
+                const safeTotal = clampInt(draft.totalItems, 1, 300);
+                const nextCount = clampInt(
+                  Number(e.target.value),
+                  0,
+                  safeTotal
+                );
+                const seedIndices = randomSeedIndices(safeTotal, nextCount);
+                onControlsPatch({
+                  totalItems: safeTotal,
+                  initialOnes: seedIndices.length,
+                  seedIndices,
+                });
+              })()
             }
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
           />
@@ -281,9 +332,7 @@ function ControlsPanel({
             max={5000}
             step={10}
             value={draft.delay}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, delay: Number(e.target.value) }))
-            }
+            onChange={(e) => onControlsPatch({ delay: Number(e.target.value) })}
             className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-slate-400 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:focus-visible:ring-slate-600"
           />
         </label>
@@ -314,10 +363,10 @@ function ControlsPanel({
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
-            onClick={onApply}
+            onClick={onRandomizeSeeds}
             className="inline-flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100 dark:hover:bg-slate-900/30"
           >
-            Apply
+            Randomize seeds
           </button>
         </div>
       </div>
@@ -325,71 +374,71 @@ function ControlsPanel({
   );
 }
 
-function OnesPerGenerationPanel({
-  bars,
-  currentGeneration,
-  max,
-}: {
-  bars: Array<{ id: string; gen: number; count: number }>;
-  currentGeneration: number;
-  max: number;
-}) {
-  const chartScrollRef = useRef<HTMLDivElement | null>(null);
-  const prevBarsLenRef = useRef(0);
+// function OnesPerGenerationPanel({
+//   bars,
+//   currentGeneration,
+//   max,
+// }: {
+//   bars: Array<{ id: string; gen: number; count: number }>;
+//   currentGeneration: number;
+//   max: number;
+// }) {
+//   const chartScrollRef = useRef<HTMLDivElement | null>(null);
+//   const prevBarsLenRef = useRef(0);
 
-  useEffect(() => {
-    if (bars.length > prevBarsLenRef.current) {
-      const el = chartScrollRef.current;
-      if (el) {
-        requestAnimationFrame(() => {
-          el.scrollLeft = el.scrollWidth;
-        });
-      }
-    }
-    prevBarsLenRef.current = bars.length;
-  }, [bars.length]);
+//   useEffect(() => {
+//     if (bars.length > prevBarsLenRef.current) {
+//       const el = chartScrollRef.current;
+//       if (el) {
+//         requestAnimationFrame(() => {
+//           el.scrollLeft = el.scrollWidth;
+//         });
+//       }
+//     }
+//     prevBarsLenRef.current = bars.length;
+//   }, [bars.length]);
 
-  return (
-    <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-      <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-        Ones per generation
-      </summary>
+//   return (
+//     <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+//       <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+//         Ones per generation
+//       </summary>
 
-      <div className="mt-3">
-        {bars.length === 0 ? (
-          <div className="text-xs text-slate-500 dark:text-slate-400">
-            Start the simulation to populate the chart.
-          </div>
-        ) : (
-          <div ref={chartScrollRef} className="overflow-x-auto">
-            <div className="flex items-end gap-1 pb-1">
-              {bars.map(({ id, gen, count }) => (
-                <div key={id} className="flex w-3 flex-col items-center gap-1">
-                  <div className="flex h-14 items-end">
-                    <div
-                      className={`w-2 rounded-sm ${
-                        gen === currentGeneration
-                          ? "bg-slate-900 dark:bg-slate-100"
-                          : "bg-slate-300 dark:bg-slate-700"
-                      }`}
-                      style={{
-                        height: `${Math.max(2, (count / max) * 100)}%`,
-                      }}
-                      title={`Gen ${gen}: ${count} ones`}
-                    />
-                  </div>
-                  <div className="text-[10px] font-medium leading-none text-slate-500 dark:text-slate-400">
-                    {count}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </details>
-  );
-}
+//       <div className="mt-3">
+//         {bars.length === 0 ? (
+//           <div className="text-xs text-slate-500 dark:text-slate-400">
+//             Start the simulation to populate the chart.
+//           </div>
+//         ) : (
+//           <div ref={chartScrollRef} className="overflow-x-auto">
+//             <div className="flex items-end gap-1 pb-1">
+//               {bars.map(({ id, gen, count }) => (
+//                 <div key={id} className="flex w-3 flex-col items-center gap-1">
+//                   <div className="flex h-14 items-end">
+//                     <div
+//                       className={`w-2 rounded-sm ${
+//                         gen === currentGeneration
+//                           ? "bg-slate-900 dark:bg-slate-100"
+//                           : "bg-slate-300 dark:bg-slate-700"
+//                       }`}
+//                       style={{
+//                         height: `${Math.max(2, (count / max) * 100)}%`,
+//                       }}
+//                       title={`Gen ${gen}: ${count} ones`}
+//                     />
+//                   </div>
+//                   <div className="text-[10px] font-medium leading-none text-slate-500 dark:text-slate-400">
+//                     {count}
+//                   </div>
+//                 </div>
+//               ))}
+//             </div>
+//           </div>
+//         )}
+//       </div>
+//     </details>
+//   );
+// }
 
 function SpaceTimeDiagram({
   appliedTotalItems,
@@ -468,7 +517,7 @@ function SpaceTimeDiagram({
 
 export function Rule22({
   totalItems = 118,
-  initialOnes = 1,
+  initialOnes,
   generations = 100,
   delay = 10,
 }: Rule22Props) {
@@ -482,32 +531,64 @@ export function Rule22({
   );
 
   // "Draft" inputs (editable) + "applied" config (drives the simulation)
-  const [draft, setDraft] = useState(() => ({
-    ruleDecimal: 22,
-    totalItems,
-    initialOnes,
-    generations,
-    delay,
-  }));
+  const [draft, setDraft] = useState(() => {
+    const fromUrl =
+      typeof window !== "undefined"
+        ? parseShareableStateFromLocation(window.location)
+        : {};
+    const safeTotal = clampInt(fromUrl.totalItems ?? totalItems, 1, 300);
+    const safeRule = clampInt(fromUrl.ruleDecimal ?? 22, 0, 255);
+    const safeGenerations = clampInt(
+      fromUrl.generations ?? generations,
+      1,
+      500
+    );
+    const safeDelay = clampInt(fromUrl.delay ?? delay, 10, 5_000);
+    const seedIndices =
+      fromUrl.seedIndices && fromUrl.seedIndices.length > 0
+        ? normalizeSeedIndices(safeTotal, fromUrl.seedIndices)
+        : randomSeedIndices(
+            safeTotal,
+            clampInt(initialOnes ?? defaultSeedCount(safeTotal), 0, safeTotal)
+          );
+
+    return {
+      ruleDecimal: safeRule,
+      totalItems: safeTotal,
+      initialOnes: seedIndices.length,
+      seedIndices,
+      generations: safeGenerations,
+      delay: safeDelay,
+    };
+  });
 
   const [config, setConfig] = useState(() => ({
-    ruleDecimal: 22,
-    totalItems,
-    initialOnes,
-    generations,
-    delay,
+    ruleDecimal: draft.ruleDecimal,
+    totalItems: draft.totalItems,
+    initialOnes: draft.initialOnes,
+    seedIndices: draft.seedIndices,
+    generations: draft.generations,
+    delay: draft.delay,
   }));
 
   const applied = useMemo(() => {
     const safeRuleDecimal = clampInt(config.ruleDecimal, 0, 255);
     const safeTotal = clampInt(config.totalItems, 1, 300);
-    const safeInitial = clampInt(config.initialOnes, 0, safeTotal);
+    const safeSeed = normalizeSeedIndices(safeTotal, config.seedIndices ?? []);
+    const safeInitial = clampInt(
+      Number.isFinite(config.initialOnes)
+        ? config.initialOnes
+        : safeSeed.length,
+      0,
+      safeTotal
+    );
     const safeGenerations = clampInt(config.generations, 1, 500);
     const safeDelay = clampInt(config.delay, 10, 5_000);
     return {
       ruleDecimal: safeRuleDecimal,
       totalItems: safeTotal,
       initialOnes: safeInitial,
+      seedIndices: safeSeed,
       generations: safeGenerations,
       delay: safeDelay,
     };
@@ -517,6 +598,7 @@ export function Rule22({
     config.initialOnes,
     config.ruleDecimal,
     config.totalItems,
+    config.seedIndices,
   ]);
 
   const ruleMeta = useMemo(
@@ -531,40 +613,129 @@ export function Rule22({
   const {
     generation,
     isRunning,
-    onesHistory,
+    // onesHistory,
     blocksHistory,
     start,
     stop,
     reset,
-  } = useElementaryAutomaton(applied);
+  } = useElementaryAutomaton({
+    ...applied,
+    seedIndices: applied.seedIndices,
+  });
+
+  const [shareToast, setShareToast] = useState<string | null>(null);
+  const shareToastTimerRef = useRef<number | null>(null);
+  const didAutoStartRef = useRef(false);
+  const pendingStartAfterRuleChangeRef = useRef(false);
+
+  const syncUrlNow = useCallback(
+    (next: {
+      ruleDecimal: number;
+      totalItems: number;
+      generations: number;
+      delay: number;
+      seedIndices: number[];
+    }) => {
+      if (typeof window === "undefined") return;
+      const nextSearch = buildShareableSearch({
+        ruleDecimal: next.ruleDecimal,
+        totalItems: next.totalItems,
+        generations: next.generations,
+        delay: next.delay,
+        seedIndices: next.seedIndices,
+      });
+      const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+      window.history.replaceState(null, "", nextUrl);
+    },
+    []
+  );
+
+  // Keep the URL in sync with the *applied* configuration.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    syncUrlNow(applied);
+  }, [applied, syncUrlNow]);
+
+  // Auto-start when loading from a shareable URL configuration.
+  useEffect(() => {
+    if (didAutoStartRef.current) return;
+    didAutoStartRef.current = true;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const hasConfig = ["r", "w", "g", "d", "s"].some((k) => params.has(k));
+    if (hasConfig) start();
+  }, [start]);
+
+  // If we changed the rule and want to immediately run, start once the new rule is applied.
+  useEffect(() => {
+    if (!pendingStartAfterRuleChangeRef.current) return;
+    pendingStartAfterRuleChangeRef.current = false;
+    start();
+  }, [start]);
+
+  // Clean up any outstanding toast timer.
+  useEffect(() => {
+    return () => {
+      if (typeof window === "undefined") return;
+      if (shareToastTimerRef.current)
+        window.clearTimeout(shareToastTimerRef.current);
+    };
+  }, []);
 
   const cellIds = useMemo(
     () => Array.from({ length: applied.totalItems }, (_, i) => `cell-${i}`),
     [applied.totalItems]
   );
 
-  const canStart = !isRunning && generation < applied.generations;
+  const canStart = !isRunning;
   const canStop = isRunning;
   const canToggleRun = isRunning ? canStop : canStart;
 
-  const chart = useMemo(() => {
-    const history = onesHistory.slice(
-      0,
-      Math.min(onesHistory.length, generation + 1)
-    );
-    const max = Math.max(1, ...history);
-    return { history, max };
-  }, [generation, onesHistory]);
+  const applyControlsPatch = useCallback(
+    (patch: Partial<ControlState>) => {
+      let nextPatch = patch;
+      if (
+        typeof patch.totalItems === "number" &&
+        patch.seedIndices == null &&
+        patch.initialOnes == null
+      ) {
+        const safeTotal = clampInt(patch.totalItems, 1, 300);
+        const count = defaultSeedCount(safeTotal);
+        const seedIndices = randomSeedIndices(safeTotal, count);
+        nextPatch = {
+          ...patch,
+          totalItems: safeTotal,
+          initialOnes: count,
+          seedIndices,
+        };
+      }
 
-  const bars = useMemo(
-    () =>
-      chart.history.map((count, gen) => ({
-        id: `gen-${gen}`,
-        gen,
-        count,
-      })),
-    [chart.history]
+      stop();
+      reset();
+      setDraft((prev) => applyControlPatch(prev, nextPatch));
+      setConfig((prev) => applyControlPatch(prev, nextPatch));
+    },
+    [reset, stop]
   );
+
+  // const chart = useMemo(() => {
+  //   const history = onesHistory.slice(
+  //     0,
+  //     Math.min(onesHistory.length, generation + 1)
+  //   );
+  //   const max = Math.max(1, ...history);
+  //   return { history, max };
+  // }, [generation, onesHistory]);
+
+  // const bars = useMemo(
+  //   () =>
+  //     chart.history.map((count, gen) => ({
+  //       id: `gen-${gen}`,
+  //       gen,
+  //       count,
+  //     })),
+  //   [chart.history]
+  // );
 
   return (
     <div className="flex flex-col gap-4">
@@ -580,14 +751,8 @@ export function Rule22({
         </div>
 
         <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
-              isRunning
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-200"
-                : "border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-200"
-            }`}
-          >
-            {isRunning ? "Running" : "Paused"}
+          <span className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-2xl font-semibold tabular-nums text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100">
+            {ruleMeta.decimal}
           </span>
         </div>
       </div>
@@ -601,13 +766,31 @@ export function Rule22({
           setConfig((c) => ({ ...c, ruleDecimal: nextRule }));
           stop();
           reset();
+          syncUrlNow({
+            ruleDecimal: nextRule,
+            totalItems: applied.totalItems,
+            generations: applied.generations,
+            delay: applied.delay,
+            seedIndices: applied.seedIndices,
+          });
         }}
         isRunning={isRunning}
         canToggleRun={canToggleRun}
         onToggleRun={isRunning ? stop : start}
-        onReset={() => {
+        onRandomRule={() => {
+          const nextRule = Math.floor(Math.random() * 256);
+          setDraft((d) => ({ ...d, ruleDecimal: nextRule }));
+          setConfig((c) => ({ ...c, ruleDecimal: nextRule }));
           stop();
           reset();
+          syncUrlNow({
+            ruleDecimal: nextRule,
+            totalItems: applied.totalItems,
+            generations: applied.generations,
+            delay: applied.delay,
+            seedIndices: applied.seedIndices,
+          });
+          pendingStartAfterRuleChangeRef.current = true;
         }}
       />
 
@@ -618,37 +801,26 @@ export function Rule22({
 
       <ControlsPanel
         draft={draft}
-        setDraft={setDraft}
         applied={applied}
         currentGeneration={generation}
-        onApply={() => {
-          // Apply with clamping to avoid surprising resets while typing.
+        onRandomizeSeeds={() => {
           const safeTotal = clampInt(draft.totalItems, 1, 300);
-          const safeInitial = clampInt(draft.initialOnes, 0, safeTotal);
-          const safeGenerations = clampInt(draft.generations, 1, 500);
-          const safeDelay = clampInt(draft.delay, 10, 5_000);
-          setDraft((d) => ({
-            ...d,
+          const safeCount = clampInt(draft.initialOnes, 0, safeTotal);
+          const seedIndices = randomSeedIndices(safeTotal, safeCount);
+          applyControlsPatch({
             totalItems: safeTotal,
-            initialOnes: safeInitial,
-            generations: safeGenerations,
-            delay: safeDelay,
-          }));
-          setConfig((c) => ({
-            ...c,
-            totalItems: safeTotal,
-            initialOnes: safeInitial,
-            generations: safeGenerations,
-            delay: safeDelay,
-          }));
+            initialOnes: seedIndices.length,
+            seedIndices,
+          });
         }}
+        onControlsPatch={applyControlsPatch}
       />
 
-      <OnesPerGenerationPanel
+      {/* <OnesPerGenerationPanel
         bars={bars}
         currentGeneration={generation}
         max={chart.max}
-      />
+      /> */}
 
       <SpaceTimeDiagram
         appliedTotalItems={applied.totalItems}
@@ -657,6 +829,51 @@ export function Rule22({
         blocksHistory={blocksHistory}
         cellIds={cellIds}
       />
+
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={async () => {
+            if (typeof window === "undefined") return;
+            const text = window.location.href;
+            try {
+              await navigator.clipboard.writeText(text);
+              setShareToast("Link copied to clipboard");
+            } catch {
+              // Fallback: best-effort textarea copy.
+              const ta = document.createElement("textarea");
+              ta.value = text;
+              ta.setAttribute("readonly", "");
+              ta.style.position = "fixed";
+              ta.style.left = "-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              const ok = document.execCommand("copy");
+              document.body.removeChild(ta);
+              setShareToast(ok ? "Link copied to clipboard" : "Copy failed");
+            }
+
+            if (shareToastTimerRef.current) {
+              window.clearTimeout(shareToastTimerRef.current);
+            }
+            shareToastTimerRef.current = window.setTimeout(() => {
+              setShareToast(null);
+            }, 1600);
+          }}
+          className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-500 active:translate-y-px dark:bg-sky-500 dark:hover:bg-sky-400"
+        >
+          Share this automaton
+        </button>
+      </div>
+
+      {shareToast ? (
+        <output
+          aria-live="polite"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-800 shadow-lg dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+        >
+          {shareToast}
+        </output>
+      ) : null}
     </div>
   );
 }

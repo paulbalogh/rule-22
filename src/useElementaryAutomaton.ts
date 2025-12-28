@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface UseElementaryAutomatonOptions {
 	ruleDecimal: number; // 0..255
 	totalItems?: number;
 	initialOnes?: number;
+	seedIndices?: number[];
 	generations?: number;
 	delay?: number;
 	boundaryValue?: 0 | 1;
@@ -13,13 +14,28 @@ function makeInitialValues(
 	totalItems: number,
 	initialOnes: number,
 	boundaryValue?: 0 | 1,
+	seedIndices?: number[],
 ): Array<0 | 1> {
 	const n = Math.max(0, Math.min(totalItems, Math.floor(initialOnes)));
 	const values = Array.from(
 		{ length: totalItems },
 		() => boundaryValue ?? (0 as 0 | 1),
 	);
-	if (n === 0 || totalItems === 0) return values;
+	if (totalItems === 0) return values;
+
+	if (Array.isArray(seedIndices) && seedIndices.length > 0) {
+		const set = new Set<number>();
+		for (const idx of seedIndices) {
+			if (!Number.isFinite(idx)) continue;
+			const i = Math.floor(idx);
+			if (i < 0 || i >= totalItems) continue;
+			set.add(i);
+		}
+		for (const i of set) values[i] = 1;
+		return values;
+	}
+
+	if (n === 0) return values;
 
 	// Pick n unique indices uniformly.
 	const indices = Array.from({ length: totalItems }, (_, i) => i);
@@ -60,6 +76,7 @@ export function useElementaryAutomaton({
 	ruleDecimal,
 	totalItems = 118,
 	initialOnes = 1,
+	seedIndices,
 	generations = 100,
 	delay = 10,
 	boundaryValue = 0,
@@ -67,7 +84,12 @@ export function useElementaryAutomaton({
 	const rule = clampRuleDecimal(ruleDecimal);
 
 	const [state, setState] = useState(() => {
-		const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
+		const blocks = makeInitialValues(
+			totalItems,
+			initialOnes,
+			boundaryValue,
+			seedIndices,
+		);
 		return {
 			blocks,
 			generation: 0,
@@ -78,9 +100,29 @@ export function useElementaryAutomaton({
 	});
 
 	// If config changes, re-seed on the next tick (keeps the "no setState in effect body" lint happy).
+	const didMountRef = useRef(false);
+	const prevConfigKeyRef = useRef<string | null>(null);
 	useEffect(() => {
+		const seedKey = Array.isArray(seedIndices) ? seedIndices.join(",") : "";
+
+		// Don't re-seed on first mount; the initial useState initializer already did it.
+		if (!didMountRef.current) {
+			didMountRef.current = true;
+			prevConfigKeyRef.current = `${totalItems}|${initialOnes}|${boundaryValue}|${seedKey}`;
+			return;
+		}
+
+		const nextKey = `${totalItems}|${initialOnes}|${boundaryValue}|${seedKey}`;
+		if (prevConfigKeyRef.current === nextKey) return;
+		prevConfigKeyRef.current = nextKey;
+
 		const t = setTimeout(() => {
-			const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
+			const blocks = makeInitialValues(
+				totalItems,
+				initialOnes,
+				boundaryValue,
+				seedIndices,
+			);
 			setState({
 				blocks,
 				generation: 0,
@@ -90,7 +132,7 @@ export function useElementaryAutomaton({
 			});
 		}, 0);
 		return () => clearTimeout(t);
-	}, [totalItems, initialOnes, boundaryValue]);
+	}, [totalItems, initialOnes, boundaryValue, seedIndices]);
 
 	useEffect(() => {
 		if (!state.isRunning) return;
@@ -137,21 +179,32 @@ export function useElementaryAutomaton({
 	}, [delay, generations, state.isRunning, rule, boundaryValue]);
 
 	const start = useCallback(() => {
-		setState((prev) => ({
-			...prev,
-			isRunning: true,
+		const blocks = makeInitialValues(
+			totalItems,
+			initialOnes,
+			boundaryValue,
+			seedIndices,
+		);
+		setState({
+			blocks,
 			generation: 0,
-			onesHistory: [countOnes(prev.blocks)],
-			blocksHistory: [{ generation: 0, blocks: prev.blocks }],
-		}));
-	}, []);
+			isRunning: true,
+			onesHistory: [countOnes(blocks)],
+			blocksHistory: [{ generation: 0, blocks }],
+		});
+	}, [totalItems, initialOnes, boundaryValue, seedIndices]);
 
 	const stop = useCallback(() => {
 		setState((prev) => ({ ...prev, isRunning: false }));
 	}, []);
 
 	const reset = useCallback(() => {
-		const blocks = makeInitialValues(totalItems, initialOnes, boundaryValue);
+		const blocks = makeInitialValues(
+			totalItems,
+			initialOnes,
+			boundaryValue,
+			seedIndices,
+		);
 		setState({
 			blocks,
 			generation: 0,
@@ -159,7 +212,7 @@ export function useElementaryAutomaton({
 			onesHistory: [countOnes(blocks)],
 			blocksHistory: [{ generation: 0, blocks }],
 		});
-	}, [initialOnes, totalItems, boundaryValue]);
+	}, [initialOnes, totalItems, boundaryValue, seedIndices]);
 
 	return {
 		blocks: state.blocks,
