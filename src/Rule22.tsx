@@ -23,6 +23,7 @@ import {
   parseShareableStateFromLocation,
 } from "./urlState";
 import { useElementaryAutomaton } from "./useElementaryAutomaton";
+import { useStarredConfigs } from "./useStarredConfigs";
 
 interface Rule22Props {
   totalItems?: number;
@@ -123,7 +124,7 @@ function RuleDetailsPanel({
   return (
     <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
       <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-        Rule details
+        Rule {ruleDecimal} details
       </summary>
 
       <div className="mt-3">
@@ -162,6 +163,37 @@ function RuleDetailsPanel({
             </div>
           ))}
         </div>
+      </div>
+    </details>
+  );
+}
+
+function AboutWolframRulesPanel() {
+  return (
+    <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
+      <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+        What are these rules?
+      </summary>
+
+      <div className="mt-3 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+        <p>
+          Wolfram’s rules describe how very simple systems can evolve over time.
+          Each rule tells a row of cells how to update itself using only its
+          immediate neighbours, yet when you repeat this tiny instruction again
+          and again, you can get wildly different outcomes: some patterns
+          quickly freeze, some repeat forever, some dissolve into apparent
+          randomness, and a rare few generate rich, evolving structures that can
+          carry information.
+        </p>
+
+        <a
+          href="https://en.wikipedia.org/wiki/Elementary_cellular_automaton"
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center text-sm font-semibold text-sky-700 underline-offset-4 hover:underline dark:text-sky-300"
+        >
+          Further reading
+        </a>
       </div>
     </details>
   );
@@ -515,6 +547,25 @@ function SpaceTimeDiagram({
   );
 }
 
+function StarIcon({ filled }: { filled: boolean }) {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className={filled ? "fill-current" : "fill-none"}
+    >
+      <path
+        d="M12 17.3l-6.18 3.54 1.64-7.03L2 8.9l7.19-.62L12 1.5l2.81 6.78L22 8.9l-5.46 4.91 1.64 7.03L12 17.3z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function Rule22({
   totalItems = 118,
   initialOnes,
@@ -628,6 +679,16 @@ export function Rule22({
   const didAutoStartRef = useRef(false);
   const pendingStartAfterRuleChangeRef = useRef(false);
 
+  const starred = useStarredConfigs({
+    ruleDecimal: applied.ruleDecimal,
+    totalItems: applied.totalItems,
+    generations: applied.generations,
+    delay: applied.delay,
+    seedIndices: applied.seedIndices,
+  });
+
+  const hasStarred = starred.items.length > 0;
+
   const syncUrlNow = useCallback(
     (next: {
       ruleDecimal: number;
@@ -739,21 +800,44 @@ export function Rule22({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">
             Cellular automaton
           </div>
           <div className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">
-            {ruleMeta.name} • decimal {ruleMeta.decimal} • binary{" "}
+            {ruleMeta.name} • binary{" "}
             <span className="font-mono">{ruleMeta.binary}</span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-4 py-2 text-2xl font-semibold tabular-nums text-slate-900 shadow-sm dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100">
-            {ruleMeta.decimal}
-          </span>
+          <div className="inline-flex items-center gap-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
+            <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+              {ruleMeta.decimal}
+            </span>
+            <button
+              type="button"
+              onClick={starred.toggleCurrent}
+              aria-label={
+                starred.isStarred
+                  ? "Remove current configuration from starred"
+                  : "Star current configuration"
+              }
+              title={
+                starred.isStarred
+                  ? "Unstar this configuration"
+                  : "Star this configuration"
+              }
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 shadow-sm transition hover:bg-slate-50 active:translate-y-px dark:text-slate-200 dark:hover:bg-slate-900/30 ${
+                starred.isStarred
+                  ? "border-amber-200  text-amber-800 dark:border-amber-900/40  dark:text-amber-200"
+                  : "border-slate-200  dark:border-slate-800"
+              }`}
+            >
+              <StarIcon filled={starred.isStarred} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -794,6 +878,8 @@ export function Rule22({
         }}
       />
 
+      <AboutWolframRulesPanel />
+
       <RuleDetailsPanel
         ruleDecimal={ruleMeta.decimal}
         ruleBinary={ruleMeta.binary}
@@ -829,6 +915,34 @@ export function Rule22({
         blocksHistory={blocksHistory}
         cellIds={cellIds}
       />
+
+      {hasStarred ? (
+        <details
+          open
+          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30"
+        >
+          <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+            Starred
+          </summary>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {starred.items.map((it) => (
+              <a
+                key={it.id}
+                href={it.search}
+                className={`inline-flex h-10 items-center rounded-xl border px-3 text-sm font-semibold shadow-sm transition hover:bg-slate-50 active:translate-y-px dark:hover:bg-slate-900/30 ${
+                  it.id === starred.currentSearch
+                    ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-200"
+                    : "border-slate-200 bg-white text-slate-800 dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100"
+                }`}
+                title={new Date(it.createdAt).toLocaleString()}
+              >
+                {it.ruleDecimal}
+              </a>
+            ))}
+          </div>
+        </details>
+      ) : null}
 
       <div className="flex items-center">
         <button

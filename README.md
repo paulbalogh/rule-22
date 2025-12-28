@@ -9,12 +9,14 @@ Boundary behavior is **stitched/wrap-around** (the last cell neighbors the first
 ## Features
 
 - **All 256 ECA rules (0–255)**: pick a rule and see the corresponding (L,C,R) truth table.
+- **What are these rules?**: a short explainer panel with a link to further reading.
 - **Space‑time diagram**: tiny dots, one row per generation, auto-scrolls as the simulation runs.
 - **Run controls**: rule selector + start/stop + **Random rule**.
 - **Tunable parameters** (collapsed panel): total cells, number of seeds, generations, delay.
 - **Theme switcher**: light / dark / system (in the footer, persisted locally).
 - **Shareable URLs**: the rule + controls + exact seed positions are encoded in the URL.
 - **Share button**: one-click copy-to-clipboard with a small “copied” toast.
+- **Starred configurations**: star/unstar the current configuration and revisit your starred history (persisted locally).
 
 ## Defaults
 
@@ -78,6 +80,7 @@ pnpm preview
 
 - `src/useElementaryAutomaton.ts`: simulation engine (rule application + stepping + history)
 - `src/Rule22.tsx`: UI (rule&run, controls, ones chart, space‑time diagram)
+- `src/useStarredConfigs.ts`, `src/starredConfigs.ts`: starred configuration persistence (localStorage)
 - `src/urlState.ts`: URL encode/decode helpers for shareable configuration
 - `src/theme.ts`, `src/useTheme.ts`, `src/ThemeSwitcher.tsx`: theme handling
 
