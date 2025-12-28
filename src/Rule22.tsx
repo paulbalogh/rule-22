@@ -623,8 +623,8 @@ export function Rule22({
     seedIndices: applied.seedIndices,
   });
 
-  const [shareToast, setShareToast] = useState<string | null>(null);
-  const shareToastTimerRef = useRef<number | null>(null);
+  const [shareLabel, setShareLabel] = useState("Share this automaton");
+  const shareLabelTimerRef = useRef<number | null>(null);
   const didAutoStartRef = useRef(false);
   const pendingStartAfterRuleChangeRef = useRef(false);
 
@@ -673,12 +673,12 @@ export function Rule22({
     start();
   }, [start]);
 
-  // Clean up any outstanding toast timer.
+  // Clean up any outstanding label timer.
   useEffect(() => {
     return () => {
       if (typeof window === "undefined") return;
-      if (shareToastTimerRef.current)
-        window.clearTimeout(shareToastTimerRef.current);
+      if (shareLabelTimerRef.current)
+        window.clearTimeout(shareLabelTimerRef.current);
     };
   }, []);
 
@@ -838,7 +838,7 @@ export function Rule22({
             const text = window.location.href;
             try {
               await navigator.clipboard.writeText(text);
-              setShareToast("Link copied to clipboard");
+              setShareLabel("Link copied!");
             } catch {
               // Fallback: best-effort textarea copy.
               const ta = document.createElement("textarea");
@@ -850,30 +850,21 @@ export function Rule22({
               ta.select();
               const ok = document.execCommand("copy");
               document.body.removeChild(ta);
-              setShareToast(ok ? "Link copied to clipboard" : "Copy failed");
+              setShareLabel(ok ? "Link copied!" : "Copy failed");
             }
 
-            if (shareToastTimerRef.current) {
-              window.clearTimeout(shareToastTimerRef.current);
+            if (shareLabelTimerRef.current) {
+              window.clearTimeout(shareLabelTimerRef.current);
             }
-            shareToastTimerRef.current = window.setTimeout(() => {
-              setShareToast(null);
+            shareLabelTimerRef.current = window.setTimeout(() => {
+              setShareLabel("Share this automaton");
             }, 1600);
           }}
           className="inline-flex h-11 w-full items-center justify-center rounded-xl bg-sky-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-500 active:translate-y-px dark:bg-sky-500 dark:hover:bg-sky-400"
         >
-          Share this automaton
+          {shareLabel}
         </button>
       </div>
-
-      {shareToast ? (
-        <output
-          aria-live="polite"
-          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-800 shadow-lg dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
-        >
-          {shareToast}
-        </output>
-      ) : null}
     </div>
   );
 }
