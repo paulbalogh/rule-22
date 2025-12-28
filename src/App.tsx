@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import { Rule22 } from "./Rule22";
 import { ThemeSwitcher } from "./ThemeSwitcher";
 
@@ -33,6 +34,8 @@ function App() {
           <ThemeSwitcher />
         </div>
       </footer>
+
+      <Analytics />
     </div>
   );
 }
