@@ -477,30 +477,114 @@ function SpaceTimeDiagram({
   totalGenerations,
   generation,
   blocksHistory,
-  cellIds,
 }: {
   appliedTotalItems: number;
   totalGenerations: number;
   generation: number;
   blocksHistory: Array<{ generation: number; blocks: Array<0 | 1> }>;
-  cellIds: string[];
 }) {
   const spaceTimeRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const prevGenRef = useRef(generation);
+  const prevConfigKeyRef = useRef<string>("");
+  const [themeVersion, setThemeVersion] = useState(0);
 
   // Approximate needed height: each row ~2px dot + 1px gap = ~3px.
   // Use the configured total generations so the container height matches the expected full run.
   const approxMinHeightPx = (totalGenerations + 1) * 3 + 16;
 
   useEffect(() => {
-    if (generation <= prevGenRef.current) return;
+    if (typeof window === "undefined") return;
+    const root = document.documentElement;
+    const obs = new MutationObserver(() => setThemeVersion((v) => v + 1));
+    obs.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const step = 3; // 2px dot + 1px gap
+    const dot = 2;
+    const rows = Math.max(1, totalGenerations + 1);
+    const cols = Math.max(1, appliedTotalItems);
+    const logicalW = cols * step;
+    const logicalH = rows * step;
+    const dpr =
+      typeof window !== "undefined"
+        ? Math.max(1, window.devicePixelRatio || 1)
+        : 1;
+
+    const ctx = canvas.getContext("2d", { alpha: true });
+    if (!ctx) return;
+
+    const isDark =
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("dark");
+    const onColor = isDark ? "#38bdf8" : "#2563eb"; // sky-400 / blue-600
+    const offColor = isDark ? "#1e293b" : "#e2e8f0"; // slate-800 / slate-200
+
+    const configKey = `${cols}|${rows}|${themeVersion}`;
+    const shouldFullRedraw =
+      prevConfigKeyRef.current !== configKey || generation < prevGenRef.current;
+
+    // Ensure a stable backing store size (prevents reallocating on every generation).
+    const nextBackingW = Math.floor(logicalW * dpr);
+    const nextBackingH = Math.floor(logicalH * dpr);
+    if (canvas.width !== nextBackingW) canvas.width = nextBackingW;
+    if (canvas.height !== nextBackingH) canvas.height = nextBackingH;
+    canvas.style.width = `${logicalW}px`;
+    canvas.style.height = `${logicalH}px`;
+
+    // Reset transform after size changes.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+
+    const drawRow = (rowIndex: number) => {
+      const row = blocksHistory[rowIndex];
+      if (!row) return;
+
+      const y = rowIndex * step;
+      // Clear the row strip, then redraw cells.
+      ctx.clearRect(0, y, logicalW, step);
+      for (let x = 0; x < cols; x++) {
+        const v = row.blocks[x] ?? 0;
+        ctx.fillStyle = v === 1 ? onColor : offColor;
+        // Draw a small "dot" circle (matches the old rounded-full 2px div).
+        const cx = x * step + dot / 2;
+        const cy = y + dot / 2;
+        ctx.beginPath();
+        ctx.arc(cx, cy, dot / 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    if (shouldFullRedraw) {
+      ctx.clearRect(0, 0, logicalW, logicalH);
+      const maxRow = Math.min(generation, rows - 1);
+      for (let r = 0; r <= maxRow; r++) drawRow(r);
+    } else if (generation > prevGenRef.current) {
+      const from = Math.max(0, prevGenRef.current + 1);
+      const to = Math.min(generation, rows - 1);
+      for (let r = from; r <= to; r++) drawRow(r);
+    }
+
     prevGenRef.current = generation;
+    prevConfigKeyRef.current = configKey;
+
     const el = spaceTimeRef.current;
     if (!el) return;
     requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
-  }, [generation]);
+  }, [
+    appliedTotalItems,
+    blocksHistory,
+    generation,
+    themeVersion,
+    totalGenerations,
+  ]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
@@ -519,28 +603,12 @@ function SpaceTimeDiagram({
           className="overflow-auto rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40"
           style={{ minHeight: `${approxMinHeightPx}px` }}
         >
-          <div className="flex flex-col gap-px" aria-hidden="true">
-            {blocksHistory.slice(0, generation + 1).map((row) => (
-              <div
-                key={`gen-${row.generation}`}
-                className="grid gap-px"
-                style={{
-                  gridTemplateColumns: `repeat(${appliedTotalItems}, 2px)`,
-                }}
-              >
-                {row.blocks.map((cell, i) => (
-                  <div
-                    key={`${row.generation}-${cellIds[i] ?? `cell-${i}`}`}
-                    className={`h-[2px] w-[2px] rounded-full ${
-                      cell === 1
-                        ? "bg-blue-600 dark:bg-sky-400"
-                        : "bg-slate-200 dark:bg-slate-800"
-                    }`}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label="Space-time diagram"
+            style={{ imageRendering: "pixelated" }}
+          />
         </div>
       </div>
     </div>
@@ -743,11 +811,6 @@ export function Rule22({
     };
   }, []);
 
-  const cellIds = useMemo(
-    () => Array.from({ length: applied.totalItems }, (_, i) => `cell-${i}`),
-    [applied.totalItems]
-  );
-
   const canStart = !isRunning;
   const canStop = isRunning;
   const canToggleRun = isRunning ? canStop : canStart;
@@ -913,7 +976,6 @@ export function Rule22({
         totalGenerations={applied.generations}
         generation={generation}
         blocksHistory={blocksHistory}
-        cellIds={cellIds}
       />
 
       {hasStarred ? (
