@@ -406,72 +406,6 @@ function ControlsPanel({
   );
 }
 
-// function OnesPerGenerationPanel({
-//   bars,
-//   currentGeneration,
-//   max,
-// }: {
-//   bars: Array<{ id: string; gen: number; count: number }>;
-//   currentGeneration: number;
-//   max: number;
-// }) {
-//   const chartScrollRef = useRef<HTMLDivElement | null>(null);
-//   const prevBarsLenRef = useRef(0);
-
-//   useEffect(() => {
-//     if (bars.length > prevBarsLenRef.current) {
-//       const el = chartScrollRef.current;
-//       if (el) {
-//         requestAnimationFrame(() => {
-//           el.scrollLeft = el.scrollWidth;
-//         });
-//       }
-//     }
-//     prevBarsLenRef.current = bars.length;
-//   }, [bars.length]);
-
-//   return (
-//     <details className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/30">
-//       <summary className="cursor-pointer list-none select-none text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
-//         Ones per generation
-//       </summary>
-
-//       <div className="mt-3">
-//         {bars.length === 0 ? (
-//           <div className="text-xs text-slate-500 dark:text-slate-400">
-//             Start the simulation to populate the chart.
-//           </div>
-//         ) : (
-//           <div ref={chartScrollRef} className="overflow-x-auto">
-//             <div className="flex items-end gap-1 pb-1">
-//               {bars.map(({ id, gen, count }) => (
-//                 <div key={id} className="flex w-3 flex-col items-center gap-1">
-//                   <div className="flex h-14 items-end">
-//                     <div
-//                       className={`w-2 rounded-sm ${
-//                         gen === currentGeneration
-//                           ? "bg-slate-900 dark:bg-slate-100"
-//                           : "bg-slate-300 dark:bg-slate-700"
-//                       }`}
-//                       style={{
-//                         height: `${Math.max(2, (count / max) * 100)}%`,
-//                       }}
-//                       title={`Gen ${gen}: ${count} ones`}
-//                     />
-//                   </div>
-//                   <div className="text-[10px] font-medium leading-none text-slate-500 dark:text-slate-400">
-//                     {count}
-//                   </div>
-//                 </div>
-//               ))}
-//             </div>
-//           </div>
-//         )}
-//       </div>
-//     </details>
-//   );
-// }
-
 function SpaceTimeDiagram({
   appliedTotalItems,
   totalGenerations,
@@ -729,18 +663,11 @@ export function Rule22({
     [applied.ruleDecimal]
   );
 
-  const {
-    generation,
-    isRunning,
-    // onesHistory,
-    blocksHistory,
-    start,
-    stop,
-    reset,
-  } = useElementaryAutomaton({
-    ...applied,
-    seedIndices: applied.seedIndices,
-  });
+  const { generation, isRunning, blocksHistory, start, stop, reset } =
+    useElementaryAutomaton({
+      ...applied,
+      seedIndices: applied.seedIndices,
+    });
 
   const [shareLabel, setShareLabel] = useState("Share this automaton");
   const shareLabelTimerRef = useRef<number | null>(null);
@@ -841,25 +768,6 @@ export function Rule22({
     },
     [reset, stop]
   );
-
-  // const chart = useMemo(() => {
-  //   const history = onesHistory.slice(
-  //     0,
-  //     Math.min(onesHistory.length, generation + 1)
-  //   );
-  //   const max = Math.max(1, ...history);
-  //   return { history, max };
-  // }, [generation, onesHistory]);
-
-  // const bars = useMemo(
-  //   () =>
-  //     chart.history.map((count, gen) => ({
-  //       id: `gen-${gen}`,
-  //       gen,
-  //       count,
-  //     })),
-  //   [chart.history]
-  // );
 
   return (
     <div className="flex flex-col gap-4">
@@ -964,12 +872,6 @@ export function Rule22({
         }}
         onControlsPatch={applyControlsPatch}
       />
-
-      {/* <OnesPerGenerationPanel
-        bars={bars}
-        currentGeneration={generation}
-        max={chart.max}
-      /> */}
 
       <SpaceTimeDiagram
         appliedTotalItems={applied.totalItems}
