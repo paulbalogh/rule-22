@@ -782,33 +782,31 @@ export function Rule22({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-0 rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
-            <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
-              {ruleMeta.decimal}
-            </span>
-            <button
-              type="button"
-              onClick={starred.toggleCurrent}
-              aria-label={
-                starred.isStarred
-                  ? "Remove current configuration from starred"
-                  : "Star current configuration"
-              }
-              title={
-                starred.isStarred
-                  ? "Unstar this configuration"
-                  : "Star this configuration"
-              }
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-700 shadow-sm transition hover:bg-slate-50 active:translate-y-px dark:text-slate-200 dark:hover:bg-slate-900/30 ${
-                starred.isStarred
-                  ? "border-amber-200  text-amber-800 dark:border-amber-900/40  dark:text-amber-200"
-                  : "border-slate-200  dark:border-slate-800"
-              }`}
-            >
-              <StarIcon filled={starred.isStarred} />
-            </button>
-          </div>
+        <div className="inline-flex items-center gap-1 rounded-2xl border border-slate-200 bg-white pl-3 pr-1 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-950/40">
+          <span className="text-2xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">
+            {ruleMeta.decimal}
+          </span>
+          <button
+            type="button"
+            onClick={starred.toggleCurrent}
+            aria-label={
+              starred.isStarred
+                ? "Remove current configuration from starred"
+                : "Star current configuration"
+            }
+            title={
+              starred.isStarred
+                ? "Unstar this configuration"
+                : "Star this configuration"
+            }
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-slate-700 transition hover:bg-slate-50 active:translate-y-px dark:text-slate-200 dark:hover:bg-slate-900/30 ${
+              starred.isStarred
+                ? "border-amber-200  text-amber-800 dark:border-amber-900/40  dark:text-amber-200"
+                : "border-slate-200  dark:border-slate-800"
+            }`}
+          >
+            <StarIcon filled={starred.isStarred} />
+          </button>
         </div>
       </div>
 
@@ -928,7 +926,7 @@ export function Rule22({
               ta.select();
               const ok = document.execCommand("copy");
               document.body.removeChild(ta);
-              setShareLabel(ok ? "Link copied!" : "Copy failed");
+              setShareLabel(ok ? "Link copied..." : "Copy failed");
             }
 
             if (shareLabelTimerRef.current) {
