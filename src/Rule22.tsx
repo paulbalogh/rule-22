@@ -261,6 +261,8 @@ function ControlsPanel({
   draft,
   applied,
   currentGeneration,
+  autorunOnChange,
+  onToggleAutorunOnChange,
   onRandomizeSeeds,
   onControlsPatch,
 }: {
@@ -279,6 +281,8 @@ function ControlsPanel({
     delay: number;
   };
   currentGeneration: number;
+  autorunOnChange: boolean;
+  onToggleAutorunOnChange: (next: boolean) => void;
   onRandomizeSeeds: () => void;
   onControlsPatch: (patch: Partial<ControlState>) => void;
 }) {
@@ -393,6 +397,15 @@ function ControlsPanel({
         </div>
 
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
+          <label className="inline-flex h-10 w-full select-none items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm sm:w-auto dark:border-slate-800 dark:bg-slate-950/40 dark:text-slate-100">
+            <span className="text-sm font-semibold">Autorun on change</span>
+            <input
+              type="checkbox"
+              checked={autorunOnChange}
+              onChange={(e) => onToggleAutorunOnChange(e.target.checked)}
+              className="h-4 w-4 accent-sky-600"
+            />
+          </label>
           <button
             type="button"
             onClick={onRandomizeSeeds}
@@ -411,11 +424,13 @@ function SpaceTimeDiagram({
   totalGenerations,
   generation,
   blocksHistory,
+  seedKey,
 }: {
   appliedTotalItems: number;
   totalGenerations: number;
   generation: number;
   blocksHistory: Array<{ generation: number; blocks: Array<0 | 1> }>;
+  seedKey: string;
 }) {
   const spaceTimeRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -459,7 +474,9 @@ function SpaceTimeDiagram({
     const onColor = isDark ? "#38bdf8" : "#2563eb"; // sky-400 / blue-600
     const offColor = isDark ? "#1e293b" : "#e2e8f0"; // slate-800 / slate-200
 
-    const configKey = `${cols}|${rows}|${themeVersion}`;
+    // Include seedKey so we force a redraw when the initial condition changes
+    // (otherwise generation can stay at 0 and we'd keep stale pixels).
+    const configKey = `${cols}|${rows}|${themeVersion}|${seedKey}`;
     const shouldFullRedraw =
       prevConfigKeyRef.current !== configKey || generation < prevGenRef.current;
 
@@ -516,6 +533,7 @@ function SpaceTimeDiagram({
     appliedTotalItems,
     blocksHistory,
     generation,
+    seedKey,
     themeVersion,
     totalGenerations,
   ]);
@@ -672,7 +690,8 @@ export function Rule22({
   const [shareLabel, setShareLabel] = useState("Share this automaton");
   const shareLabelTimerRef = useRef<number | null>(null);
   const didAutoStartRef = useRef(false);
-  const pendingStartAfterRuleChangeRef = useRef(false);
+  const [autorunOnChange, setAutorunOnChange] = useState(true);
+  const pendingAutoStartRef = useRef(false);
 
   const starred = useStarredConfigs({
     ruleDecimal: applied.ruleDecimal,
@@ -722,12 +741,37 @@ export function Rule22({
     if (hasConfig) start();
   }, [start]);
 
-  // If we changed the rule and want to immediately run, start once the new rule is applied.
+  // If a parameter change requested an auto-run, start once the new *applied* config is in place.
+  const appliedKey = useMemo(
+    () =>
+      [
+        applied.ruleDecimal,
+        applied.totalItems,
+        applied.generations,
+        applied.delay,
+        applied.seedIndices.join(","),
+      ].join("|"),
+    [
+      applied.delay,
+      applied.generations,
+      applied.ruleDecimal,
+      applied.seedIndices,
+      applied.totalItems,
+    ]
+  );
+
   useEffect(() => {
-    if (!pendingStartAfterRuleChangeRef.current) return;
-    pendingStartAfterRuleChangeRef.current = false;
-    start();
-  }, [start]);
+    // Intentionally reference appliedKey so the hook dependency reflects what triggers this effect.
+    void appliedKey;
+    if (!pendingAutoStartRef.current) return;
+    pendingAutoStartRef.current = false;
+    // `useElementaryAutomaton` re-seeds on some config changes using `setTimeout(0)` and sets `isRunning: false`.
+    // To avoid a race where we start and then immediately get stopped by that internal re-seed, schedule our start
+    // after that tick as well.
+    if (typeof window === "undefined") return;
+    const t = window.setTimeout(() => start(), 0);
+    return () => window.clearTimeout(t);
+  }, [appliedKey, start]);
 
   // Clean up any outstanding label timer.
   useEffect(() => {
@@ -765,8 +809,9 @@ export function Rule22({
       reset();
       setDraft((prev) => applyControlPatch(prev, nextPatch));
       setConfig((prev) => applyControlPatch(prev, nextPatch));
+      pendingAutoStartRef.current = autorunOnChange;
     },
-    [reset, stop]
+    [autorunOnChange, reset, stop]
   );
 
   return (
@@ -819,6 +864,7 @@ export function Rule22({
           setConfig((c) => ({ ...c, ruleDecimal: nextRule }));
           stop();
           reset();
+          pendingAutoStartRef.current = autorunOnChange;
           syncUrlNow({
             ruleDecimal: nextRule,
             totalItems: applied.totalItems,
@@ -843,7 +889,7 @@ export function Rule22({
             delay: applied.delay,
             seedIndices: applied.seedIndices,
           });
-          pendingStartAfterRuleChangeRef.current = true;
+          pendingAutoStartRef.current = autorunOnChange;
         }}
       />
 
@@ -858,6 +904,8 @@ export function Rule22({
         draft={draft}
         applied={applied}
         currentGeneration={generation}
+        autorunOnChange={autorunOnChange}
+        onToggleAutorunOnChange={setAutorunOnChange}
         onRandomizeSeeds={() => {
           const safeTotal = clampInt(draft.totalItems, 1, 300);
           const safeCount = clampInt(draft.initialOnes, 0, safeTotal);
@@ -876,6 +924,7 @@ export function Rule22({
         totalGenerations={applied.generations}
         generation={generation}
         blocksHistory={blocksHistory}
+        seedKey={applied.seedIndices.join(",")}
       />
 
       {hasStarred ? (
